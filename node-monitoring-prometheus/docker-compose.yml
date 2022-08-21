@@ -1,0 +1,58 @@
+version: !!str 3.4
+    
+services:
+  prometheus:
+    image: 172.20.9.33:5000/prometheus:1
+    hostname: prometheus
+    ports:
+      - target: 9090
+        published: 9090
+        protocol: tcp
+    volumes:
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    networks:
+      - monitoring
+      
+
+  node_exporter:
+    image: 172.20.9.33:5000/node_exporter:latest
+    hostname: node_exporter
+    deploy:
+      endpoint_mode: dnsrr
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'
+    networks:
+      - monitoring
+
+
+  cadvisor:
+    image: 172.20.9.33:5000/cadvisor:latest
+    hostname: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    external: true
+    name: monitoring
+
+volumes:
+  prometheus-data:
+
+

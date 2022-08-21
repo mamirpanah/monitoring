@@ -1,0 +1,111 @@
+---
+version: "3.7"
+
+services:
+  loki:
+    hostname: loki
+    image: my_loki:2.6.1
+    command: "-config.file=/etc/loki/config.yaml"
+    networks:
+      - monitoring
+    deploy: 
+      update_config:
+        parallelism: 1
+        delay: 1m
+        failure_action: pause
+        monitor: 1m
+
+  promtail:
+    hostname: promtail
+    image: my_promtail:2.6.1
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /srv/gluster/adsl_python:/var/log/adsl_python:ro
+      - /srv/gluster/adsl_radius:/var/log/adsl_radius:ro
+    command: -config.file=/etc/promtail/docker-config.yml
+    networks:
+      - monitoring
+    deploy:
+      mode: global
+      update_config:
+        parallelism: 1
+        delay: 1m
+        failure_action: pause
+        monitor: 1m
+
+  minio:
+    hostname: minio
+    image: minio/minio:latest
+    command: server ~ --address ':9000' --console-address ':9001'
+    volumes:
+      - /srv/gluster/minio:/data
+    networks:
+      - monitoring
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 1m
+        failure_action: pause
+        monitor: 1m
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.minio.rule=Host(`minio.charging`)"
+        - "traefik.http.services.minio.loadbalancer.server.port=9001"
+        
+  createbuckets:
+    image: minio/mc
+    networks:
+      - monitoring
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc config host add minio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc rm -r --force myminio/loki;
+      /usr/bin/mc mb minio/loki;
+      /usr/bin/mc policy set public minio/loki;
+      exit 0;
+      "
+
+
+  grafana:
+    hostname: grafana
+    image: grafana/grafana:latest
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources
+        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+          - name: Loki
+            type: loki
+            access: proxy
+            url: http://loki:3100
+            jsonData:
+              httpHeaderName1: "X-Scope-OrgID"
+            secureJsonData:
+              httpHeaderValue1: "tenant1"
+        EOF
+        /run.sh
+    networks:
+      - monitoring
+    user: root
+    volumes: 
+      - /srv/gluster/grafana:/var/lib/grafana
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.grafana.rule=Host(`grafana.charging`)"
+        - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      update_config:
+        parallelism: 1
+        delay: 1m
+        failure_action: pause
+        monitor: 1m
+
+
+networks:
+  monitoring:
+    external: true
+    name: monitoring
+

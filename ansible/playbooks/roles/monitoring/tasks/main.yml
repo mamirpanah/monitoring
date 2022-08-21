@@ -1,0 +1,50 @@
+---
+- name: Verify stacks directory exists (on first swarm node)
+  file:
+    path: "/home/{{ansible_user}}/stacks"
+    state: directory
+
+- name: Verify monitoring volume path (on first swarm node)
+  become: true
+  become_method: sudo
+  file:
+    path: /mnt/gfs/monitoring
+    state: directory
+
+- name: Copying the Directory's contents
+  copy:
+    src: "{{playbook_dir}}/roles/monitoring/templates"
+    dest: "/home/{{ansible_user}}/stacks"
+    mode: 0775
+
+- name: Build images
+  shell: |
+    cd /home/{{ansible_user}}/stacks/templates
+    docker pull grafana/grafana:latest
+    docker pull minio/mc
+    docker pull minio/minio:latest
+    docker build -t my_loki:2.6.1 -f Dockerfile-loki .
+    cd promtail
+    docker build -t my_promtail:2.6.1 .
+  register: build
+
+- debug:
+    var: build
+
+- name: Delete a network, disconnecting all containers
+  docker_network:
+    name: "{{monitoring_network_name}}"
+    state: absent
+    force: yes
+
+- name: Create a network
+  docker_network:
+    name: "{{monitoring_network_name}}"
+    driver: "overlay"
+
+- name: Deploy stack from a compose file (on first swarm node)
+  docker_stack:
+    state: present
+    name: planA
+    compose:
+      - "/home/{{ansible_user}}/stacks/templates/docker-compose.yml"

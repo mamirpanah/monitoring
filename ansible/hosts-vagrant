@@ -1,0 +1,9 @@
+[all]
+192.168.56.10
+
+[all:vars]
+ansible_connection=ssh
+ansible_user=vagrant
+ansible_ssh_private_key_file=~/.vagrant.d/insecure_private_key
+device2_hdd_dev=/dev/sda1
+ansible_ssh_extra_args='-o StrictHostKeyChecking=no'
